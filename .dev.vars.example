@@ -1,0 +1,15 @@
+# LOCAL DEVELOPMENT ONLY. Do NOT commit .dev.vars or real credentials.
+# Use one AI provider or leave both blank to test non-AI features.
+GEMINI_API_KEY=your_private_google_ai_studio_key
+GROQ_API_KEY=your_private_groq_api_key
+# Google Cloud OAuth web application (optional)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# Microsoft Entra web app registration (optional)
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+# Optional, comma-separated emails allowed to moderate community reports
+ADMIN_EMAILS=
+
+# Neon/PostgreSQL mode only. Copy the connection string from Neon dashboard.
+DATABASE_URL=postgresql://username:password@your-neon-host.neon.tech/neondb?sslmode=require

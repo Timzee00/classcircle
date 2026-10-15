@@ -1,0 +1,27 @@
+{
+  "name": "classcircle-open",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "ClassCircle D1 or Neon PostgreSQL deployment; social, OAuth, AI Gemini/Groq, optional R2",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply classcircle-db --local",
+    "db:remote": "wrangler d1 migrations apply classcircle-db --remote",
+    "check": "node --check worker/index.js && node --check worker/social.js && node --check worker/oauth.js && node --check public/app.js && node --check public/social.js && node --check public/sw.js",
+    "test": "node --test tests/*.test.mjs",
+    "dev:lite": "wrangler dev --local -c wrangler-lite.jsonc",
+    "deploy:lite": "wrangler deploy -c wrangler-lite.jsonc",
+    "dev:neon": "wrangler dev -c wrangler-neon.jsonc",
+    "deploy:neon": "wrangler deploy -c wrangler-neon.jsonc",
+    "deploy:neon:r2": "wrangler deploy -c wrangler-neon-r2.jsonc",
+    "test:neon-adapter": "node --test tests/neon-adapter.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0"
+  }
+}
