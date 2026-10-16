@@ -1,9 +1,15 @@
 import app from './index-neon.js';
+import {runHousekeeping} from './admin.js';
 import { Client } from '@neondatabase/serverless';
 import { createPostgresD1Adapter } from './neon-adapter.js';
 
 /** Cloudflare Worker entrypoint for Neon PostgreSQL. */
 export default {
+  async scheduled(event, env, ctx) {
+    if(!env.DATABASE_URL)return;
+    const client=new Client(env.DATABASE_URL);
+    try{await client.connect();await runHousekeeping({...env,DB:createPostgresD1Adapter(client)})}catch(err){console.error('BrainBox scheduled job',err)}finally{await client.end()}
+  },
   async fetch(request, env, ctx) {
     // Requests for static assets are handled by Cloudflare's assets binding;
     // API requests only reach this entrypoint.
