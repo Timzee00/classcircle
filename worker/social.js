@@ -25,7 +25,8 @@ const getPosts=async(e,u,where,params=[],limit=21,ordering='sp.created_at DESC, 
  (SELECT mime FROM media_objects m WHERE m.id=sp.media_id AND m.status='ready') AS media_mime
  FROM social_posts sp JOIN users usr ON usr.id=sp.user_id LEFT JOIN profiles pr ON pr.user_id=sp.user_id
  LEFT JOIN social_posts orig ON orig.id=sp.shared_post_id LEFT JOIN users original_usr ON original_usr.id=orig.user_id LEFT JOIN profiles orig_pr ON orig_pr.user_id=orig.user_id
- WHERE NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=sp.user_id) OR (b.blocker_id=sp.user_id AND b.blocked_id=?))
+ WHERE NOT EXISTS(SELECT 1 FROM admin_hidden_posts h WHERE h.post_id=sp.id)
+ AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=sp.user_id) OR (b.blocker_id=sp.user_id AND b.blocked_id=?))
  AND (COALESCE(pr.is_private,0)=0 OR sp.user_id=? OR EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=? AND f.followed_id=sp.user_id))
  AND (${where}) ORDER BY ${ordering} LIMIT ?`;
  return many(e,sql,u.id,u.id,u.id,u.id,u.id,u.id,u.id,u.id,u.id,u.id,u.id,u.id,...params,limit);
@@ -139,7 +140,7 @@ export async function handleCommunity(req,e,u,{invokeAI,steps}){
  const readMedia=path.match(/^\/api\/community\/media\/([0-9a-f-]{36})$/);
  if(readMedia&&method==='GET'){
   if(!e.MEDIA)return bad('Media storage unavailable',503);
-  const m=await one(e,`SELECT m.id,m.filename,m.mime,m.size_bytes,sp.user_id,COALESCE(pr.is_private,0) AS private FROM media_objects m JOIN social_posts sp ON sp.media_id=m.id LEFT JOIN profiles pr ON pr.user_id=sp.user_id WHERE m.id=? AND m.status='ready'`,readMedia[1]);
+  const m=await one(e,`SELECT m.id,m.filename,m.mime,m.size_bytes,sp.user_id,COALESCE(pr.is_private,0) AS private FROM media_objects m JOIN social_posts sp ON sp.media_id=m.id LEFT JOIN profiles pr ON pr.user_id=sp.user_id WHERE m.id=? AND m.status='ready' AND NOT EXISTS(SELECT 1 FROM admin_hidden_posts h WHERE h.post_id=sp.id)`,readMedia[1]);
   if(!m||await blocked(e,u.id,m.user_id))return bad('File not found',404);
   if(m.private&&m.user_id!==u.id&&!await one(e,'SELECT 1 FROM follows WHERE follower_id=? AND followed_id=?',u.id,m.user_id))return bad('File not found',404);
   const range=req.headers.get('range'),single=range?.match(/^bytes=(\d+)-(\d*)$/);
@@ -150,6 +151,7 @@ export async function handleCommunity(req,e,u,{invokeAI,steps}){
   return new Response(object.body,{status:single?206:200,headers});
  }
  if(method==='POST'&&path==='/api/community/posts'){
+  const mode=await one(e,'SELECT value FROM admin_settings WHERE key=?','social_posting_enabled');if(mode?.value==='false')return bad('New community posts are temporarily disabled.',503);
   const p=await body(req),content=text(p.body,2800),kind=['discussion','cheatsheet','revision','resource','question'].includes(p.kind)?p.kind:'discussion';
   const tag=text(p.tag,50).replace(/[^a-zA-Z0-9 #_-]/g,'').replace(/^#+/,'').replace(/\s+/g,' ').trim().toLowerCase();
   const mediaId=p.media_id||null,sharedId=p.shared_post_id||null;
@@ -170,7 +172,7 @@ export async function handleCommunity(req,e,u,{invokeAI,steps}){
  }
  const postAction=path.match(/^\/api\/community\/posts\/([0-9a-f-]{36})(?:\/(like|save|comments|report))?$/);
  if(postAction){const postId=postAction[1],action=postAction[2]||'';
-  const original=await one(e,'SELECT sp.id,sp.user_id,COALESCE(pr.is_private,0) AS private FROM social_posts sp LEFT JOIN profiles pr ON pr.user_id=sp.user_id WHERE sp.id=?',postId);
+  const original=await one(e,'SELECT sp.id,sp.user_id,COALESCE(pr.is_private,0) AS private FROM social_posts sp LEFT JOIN profiles pr ON pr.user_id=sp.user_id WHERE sp.id=? AND NOT EXISTS(SELECT 1 FROM admin_hidden_posts h WHERE h.post_id=sp.id)',postId);
   if(!original||await blocked(e,u.id,original.user_id))return bad('Post not found',404);
   if(original.private&&original.user_id!==u.id&&!await one(e,'SELECT 1 FROM follows WHERE follower_id=? AND followed_id=?',u.id,original.user_id))return bad('Post unavailable',403);
   if(method==='GET'&&!action)return json({posts:await getPosts(e,u,'sp.id=?',[postId],1)});
