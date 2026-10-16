@@ -3,6 +3,7 @@
   "name": "classcircle-neon",
   "main": "worker/neon-entry.js",
   "compatibility_date": "2026-10-15",
+  "triggers": {"crons": ["0 3 * * *"]},
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
