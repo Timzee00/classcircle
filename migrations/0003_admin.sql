@@ -7,3 +7,11 @@ CREATE TABLE IF NOT EXISTS admin_audit(id TEXT PRIMARY KEY,actor_id TEXT REFEREN
 CREATE INDEX IF NOT EXISTS admin_audit_recent ON admin_audit(created_at DESC);
 CREATE TABLE IF NOT EXISTS admin_job_runs(id TEXT PRIMARY KEY,name TEXT NOT NULL,period TEXT NOT NULL,status TEXT NOT NULL,summary TEXT NOT NULL,started_at TEXT NOT NULL,UNIQUE(name,period));
 CREATE TABLE IF NOT EXISTS admin_review_queue(id TEXT PRIMARY KEY,post_id TEXT NOT NULL UNIQUE REFERENCES social_posts(id) ON DELETE CASCADE,reason TEXT NOT NULL,created_at TEXT NOT NULL);
+-- Site-wide safe defaults. Superadmin can change them through BrainBox.
+INSERT OR IGNORE INTO admin_settings(key,value,updated_at) VALUES
+ ('maintenance_mode','false','2026-01-01T00:00:00Z'),
+ ('registration_enabled','true','2026-01-01T00:00:00Z'),
+ ('ai_enabled','true','2026-01-01T00:00:00Z'),
+ ('social_posting_enabled','true','2026-01-01T00:00:00Z'),
+ ('automation_cleanup','true','2026-01-01T00:00:00Z'),
+ ('automation_triage','true','2026-01-01T00:00:00Z');
