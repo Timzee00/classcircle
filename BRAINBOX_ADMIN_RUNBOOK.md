@@ -4,7 +4,7 @@ Version: 0.1 (October 2026). **This is the site-wide administrator control plane
 
 ## Important: two different codebases
 
-The GitHub version (`Timzee00/classcircle`) is a standalone Cloudflare Worker frontend, API and database. It supports D1 or Neon. The original Floot ClassCircle is a separate React/Floot platform with a separate database and cannot execute this Cloudflare Worker or D1 migration directly. This update targets the **GitHub edition** only. The Floot edition must receive a native Floot endpoint, React admin view and PostgreSQL schema equivalent when its build allowance is available. Do not claim shared accounts, shared databases or automatic synchronization between the two.
+The GitHub version (`Timzee00/classcircle`) is a standalone Cloudflare Worker frontend, API and database. It supports D1 or Neon. The original Floot ClassCircle is a separate React/Floot platform with a separate database and cannot execute this Cloudflare Worker or D1 migration directly. The **GitHub branch is the development source of truth**. The Floot edition now has a separate native React admin page, secured Floot APIs, and PostgreSQL control-plane tables. Shared feature contracts define parity; the hosting-specific source files and user databases remain different. Do not claim shared accounts, shared databases or automatic synchronization between the two.
 
 ## Production-safe deployment checklist (mandatory)
 
@@ -40,7 +40,7 @@ Staff cannot suspend themselves or a superadmin. Roles cannot be elevated to sup
 
 ### What is NOT yet included
 
-- Floot admin implementation / 1:1 parity; same account identities or cross-platform data sync.
+- **Exact cross-platform source or account synchronization.** Floot and Cloudflare remain separate implementations, with separate accounts, storage and databases. Floot's admin and GitHub's admin are not production-certified equivalents yet.
 - Fully managed moderation appeals, self-service account recovery, safety incident paging, legal data retention workflows, media antivirus, CSAM scanning and trusted-organization account verification.
 - Push/SMS/email notification delivery (no outbound credentials are assumed), real background AI classification or automatic removal of user-created content.
 - Billing/payment controls, AI provider invoices, money balances, analytics warehouse, support ticket inbox or automated staff scheduling.
@@ -61,7 +61,7 @@ Staff cannot suspend themselves or a superadmin. Roles cannot be elevated to sup
 
 ## Functional parity contract for Floot
 
-Use the same meaning for RBAC and flags across both platforms: `superadmin` (owner allowlist), `admin`, `moderator`, `support`, `student`; protected route `/admin` or `/brainbox-admin`, always server-authorized. Floot should implement native `endpoints/admin/*`, `pages/admin.tsx`, `pages/admin.pageLayout.tsx`, `cc_admin_roles`, `cc_admin_audit`, `cc_admin_settings`, `cc_admin_suspensions`, `cc_admin_job_runs`, and automated tasks compatible with Floot's scheduler. **Do not transplant Cloudflare DB bindings or auth cookies into Floot**. A shared JSON contract and tests can verify behavior without forcing identical hosting-specific code.
+Use the same meaning for RBAC and flags across both platforms: `superadmin` (owner allowlist), `admin`, `moderator`, `support`, `student`; protected route `/admin` or `/brainbox-admin`, always server-authorized. Floot now implements `endpoints/admin/state_GET.ts`, `endpoints/admin/action_POST.ts`, `pages/admin.tsx`, `pages/admin.pageLayout.tsx`, `cc_admin_roles`, `cc_admin_audit`, `cc_admin_settings`, `cc_admin_suspensions`, and `cc_admin_job_runs`. Floot's manual cleanup and report triage are available for authorized staff. Scheduled jobs require a paid published Floot app, so **the free workspace does not run periodic jobs**. Report thresholds can be triaged on report submission without cron. **Do not transplant Cloudflare DB bindings or auth cookies into Floot**. A shared JSON contract and tests can verify behavior without forcing identical hosting-specific code.
 
 ### Planned future automations, not implemented here
 
@@ -74,3 +74,28 @@ Use the same meaning for RBAC and flags across both platforms: `superadmin` (own
 - Cross-platform parity smoke-test workflow on CI.
 
 No pressure-based streaks or notification spam. The retention strategy should help students achieve real outcomes.
+
+## October 19, 2026 security and parity hardening
+
+The development branch additionally enforces higher-trust-only account restrictions, requires written reasons for role/flag/restore changes, invalidates sessions after staff-role changes, and provides `POST /api/admin/reports/:id/review` for human moderation decisions. The administrator UI collects those reasons and exposes a report-review control. The local test suite now includes **32 passing tests**, including permission hierarchy and moderation reviews. A GitHub Actions workflow performs syntax checks and tests on proposed changes; it is not an automatic production deployment.
+
+**Floot parity status:** Its React admin page and server-side endpoints are implemented and TypeScript checks passed; authenticated administrator actions still need a live account walkthrough. Superadmin-specific staff assignments in Floot require an owner-managed `CLASSCIRCLE_SUPERADMIN_EMAILS` secret, which must be configured by the app owner in a secure Floot connection. Existing `users.role='admin'` staff can operate admin controls but cannot grant superadmin status. Never place owner email allowlists into public source files or the browser.
+
+**Deployment safety:** This GitHub branch must not be merged/deployed to an active database until migrations `0003_admin.sql` (D1) or `0003_admin_postgres.sql` (Neon) have been applied and a staging administrator account tested. GitHub Actions green checks do **not** prove the live deployment is healthy, migrations were run, nor that real Google/Microsoft OAuth works.
+
+### Parity checklist
+
+| Control | GitHub / Cloudflare | Floot |
+| --- | --- | --- |
+| Protected admin dashboard | Implemented | Implemented |
+| Five roles with server checks | Implemented | Implemented; owner allowlist pending configuration |
+| Temporary suspension and role hierarchy | Implemented | Implemented |
+| Reversible post hide, report review, audit | Implemented | Implemented |
+| Six feature flags | Implemented | Implemented |
+| Request-time AI budget and account safety checks | Implemented | Implemented |
+| Automated report escalation | Daily cron | On new reports; manual historical triage |
+| Scheduled cleanup | Cloudflare cron | Manual only on Floot free plan |
+| Shared accounts and exact source code | Not implemented | Not implemented |
+| Signed-in production verification | Outstanding | Outstanding |
+
+If platform features are extended, update the shared behavior contract and tests and implement each host-specific adapter. Never treat a green unit test as proof of production readiness.
