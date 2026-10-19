@@ -135,3 +135,8 @@ Upload the whole ZIP and the file `PROMPT_FOR_AI.md` to Gemini, Codex or another
 ## Rights
 
 Independent original code generated for your ClassCircle project; you can edit, run, share with developers and host it yourself. Third-party service terms and user-uploaded materials have separate rules.
+
+
+## BrainBox platform administration (v4)
+
+See [BRAINBOX_ADMIN_RUNBOOK.md](./BRAINBOX_ADMIN_RUNBOOK.md) for migrations, super-admin setup, access roles, cron automation and precise differences from Floot. Do not deploy the v4 API to a database missing migration `0003_admin`.

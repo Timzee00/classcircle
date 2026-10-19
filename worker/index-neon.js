@@ -1,3 +1,4 @@
+import {handleAdmin,isSuspended,setting,runHousekeeping} from './admin.js';
 import {handleCommunity} from './social-neon.js';
 import {handleOAuth} from './oauth.js';
 /**
@@ -39,7 +40,8 @@ const run = async (env,sql,...params)=>env.DB.prepare(sql).bind(...params).run()
 async function session(req,env){
  const raw=getCookie(req);if(!/^[0-9a-f]{64}$/.test(raw))return null;
  const hash=await sha256(raw);
- return row(env,`SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?`,hash,new Date().toISOString());
+ const user=await row(env,`SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?`,hash,new Date().toISOString());
+ return user && !await isSuspended(env,user.id)?user:null;
 }
 async function createSession(env,user){
  const token=rand(32),hash=await sha256(token);
@@ -118,6 +120,7 @@ async function router(req,env){
  if(method==='GET'&&path==='/api/health')return json({ok:true,app:'ClassCircle Open'});
  if(method==='GET'&&path==='/api/me')return json({user:await session(req,env)});
  if(method==='POST'&&path==='/api/register'){
+  if(await setting(env,'registration_enabled','true')==='false')return fail('New registrations are temporarily closed.',503);
   const p=await parseBody(req),email=normMail(p.email),name=trim(p.name,70),password=p.password;
   if(!validEmail(email)||name.length<2||typeof password!=='string'||password.length<10||password.length>128)return fail('Enter a valid name, email and password of at least 10 characters.');
   const current=await row(env,'SELECT id FROM users WHERE email=?',email);if(current)return fail('This email is already registered.',409);
@@ -129,6 +132,7 @@ async function router(req,env){
   const p=await parseBody(req),email=normMail(p.email),password=p.password;
   const found=await row(env,'SELECT id,name,email,password_hash,salt FROM users WHERE email=?',email);
   if(!found||typeof password!=='string'||(await pbkdf(password,found.salt))!==found.password_hash)return fail('Incorrect email or password.',401);
+  if(await isSuspended(env,found.id))return fail('Your account is temporarily suspended. Contact support.',403);
   const user={id:found.id,name:found.name,email:found.email},token=await createSession(env,user);
   return json({user},200,{'Set-Cookie':cookie(token,14*86400)});
  }
@@ -137,7 +141,10 @@ async function router(req,env){
   return json({ok:true},200,{'Set-Cookie':cookie('',0)});
  }
  const u=await authenticate(req,env);
+ const adminResult=await handleAdmin(req,env,u);if(adminResult)return adminResult;
  if(method==='GET'&&path==='/api/auth/identities'){const ids=await all(env,'SELECT provider FROM oauth_identities WHERE user_id=?',u.id);return json({providers:ids.map(x=>x.provider)})}
+ if(method!=='GET'&&await setting(env,'maintenance_mode')==='true')return fail('ClassCircle is temporarily read-only for maintenance.',503);
+ if(method==='POST'&&path==='/api/ai/pack'||method==='POST'&&path==='/api/ai/coach'||method==='POST'&&path==='/api/ai/planner'){if(await setting(env,'ai_enabled','true')==='false')return fail('AI features are temporarily paused.',503)}
  const community=await handleCommunity(req,env,u,{invokeAI,steps});if(community)return community;
  if(method==='GET'&&path==='/api/bootstrap')return json(await listPayload(env,u));
  if(method==='POST'&&path==='/api/courses'){
@@ -262,6 +269,7 @@ async function router(req,env){
  return fail('API route not found.',404);
 }
 export default {
+ async scheduled(event,env,ctx){ctx.waitUntil(runHousekeeping(env).catch(e=>console.error('BrainBox scheduler',e)))},
  async fetch(req,env){
   const path=new URL(req.url).pathname;
   if(!path.startsWith('/api/'))return env.ASSETS.fetch(req);

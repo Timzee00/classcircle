@@ -1,0 +1,36 @@
+name: ClassCircle safety checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feature/brainbox-admin-control
+
+permissions:
+  contents: read
+
+concurrency:
+  group: classcircle-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-and-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check worker/index.js
+          node --check worker/index-neon.js
+          node --check worker/admin.js
+          node --check worker/oauth.js
+          node --check public/app.js
+          node --check public/social.js
+          node --check public/admin.js
+      - name: Run all backend and parity tests
+        run: node --test tests/*.test.mjs

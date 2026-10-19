@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "product": "ClassCircle",
+  "system": "BrainBox Control Plane",
+  "version": "1.1.0",
+  "scope": "platform-administration",
+  "student_tutor_is_separate": true,
+  "implementation_targets": {
+    "github": "Cloudflare Workers + D1 or Neon + HTML/JS dashboard",
+    "floot": "Floot React + Floot PostgreSQL + Floot authentication + scheduled jobs"
+  },
+  "principal_roles": [
+    "student",
+    "support",
+    "moderator",
+    "admin",
+    "superadmin"
+  ],
+  "permissions": {
+    "student": [],
+    "support": [
+      "dashboard",
+      "users_read",
+      "audit_read"
+    ],
+    "moderator": [
+      "dashboard",
+      "users_read",
+      "reports",
+      "posts",
+      "audit_read"
+    ],
+    "admin": [
+      "dashboard",
+      "users_read",
+      "reports",
+      "posts",
+      "audit_read",
+      "suspend",
+      "settings",
+      "jobs"
+    ],
+    "superadmin": [
+      "dashboard",
+      "users_read",
+      "reports",
+      "posts",
+      "audit_read",
+      "suspend",
+      "settings",
+      "jobs",
+      "roles"
+    ]
+  },
+  "owner_bootstrap": {
+    "github": "SUPERADMIN_EMAILS allowlist, checked server-side from authenticated email",
+    "floot": "CLASSCIRCLE_SUPERADMIN_EMAILS server-side allowlist; existing Floot admin role has admin-level access; secure owner configuration required before staff assignments",
+    "self_promotion": false,
+    "staff_assignable_roles": [
+      "student",
+      "support",
+      "moderator",
+      "admin"
+    ]
+  },
+  "flags": {
+    "maintenance_mode": false,
+    "registration_enabled": true,
+    "ai_enabled": true,
+    "social_posting_enabled": true,
+    "automation_cleanup": true,
+    "automation_triage": true
+  },
+  "operations": {
+    "dashboard": "Role-filtered user/content/report/AI aggregate counts",
+    "user_search": "Staff can locate matching users, with least-privilege data visibility",
+    "user_suspend": "Admin-only, reason required, 1-2160 hours, immediately invalidate existing sessions",
+    "user_restore": "Admin-only, reversible, audit-tracked",
+    "user_role_change": "Superadmin-only, protected owner accounts and self-role escalation forbidden",
+    "post_hide": "Moderator+, reason required, reversible and audit-tracked",
+    "post_restore": "Moderator+, reversible and audit-tracked",
+    "report_review": "Human reviewer decides; a report is not proof",
+    "flags_change": "Admin+, server-enforced, audit-tracked",
+    "jobs_manual_run": "Admin+ with prompt to confirm, logged",
+    "audit_history": "Staff-readable, API append-only, not cryptographically immutable"
+  },
+  "automation": {
+    "implemented_in_github": {
+      "daily_expiry_cleanup": "Remove expired sessions, OAuth state, over-45-day AI usage counters, expired suspensions",
+      "community_triage": "Queue social posts with >=3 pending reports for human review, never automatically delete",
+      "idempotency": "One scheduled execution per date/automation name",
+      "frequency": "Daily at 03:00 UTC with Cloudflare Cron Trigger"
+    },
+    "planned_for_both": {
+      "assignments": "Opt-in personalized due-date reminders, timezone-aware delivery and throttling",
+      "ai_costs": "Daily quotas, circuit breakers and provider error alerts",
+      "resources": "Duplicate detection and copyrighted-content flagging, with staff review",
+      "notifications": "Notification preference center, digest batching, cancellation and unsubscribe",
+      "opportunities": "Deadline expiry, verified-link checks and eligibility-change review",
+      "security": "Anomaly detection, secret rotation runbooks, session-risk checks and audit export",
+      "engagement": "Gentle learning follow-ups driven by user-set goals, no manipulative streak-pressure",
+      "analytics": "Opt-in aggregated progress metrics, 7/30-day retention cohorts, funnel and incident logs",
+      "workflows": "Task queue with retry, dead-letter handling, approval before high-impact actions"
+    },
+    "implemented_in_floot": {
+      "temporary_restrictions": "Enforced immediately on session authorization and expire automatically at configured time",
+      "report_triage": "On third distinct report, add the post to a moderator queue for human review",
+      "manual_cleanup": "Authorized staff can run session, AI record and expired suspension cleanup",
+      "scheduled_cleanup": "Only runs in published Floot paid plans when a supported scheduled job is configured; not running on free"
+    }
+  },
+  "security_non_negotiables": [
+    "Server authorization on every action, never frontend-only guards",
+    "Do not expose admin secrets or DB credentials in client bundles",
+    "Separate Floot and GitHub account identities until an explicit migration",
+    "Human approval before banning, deleting posts, money movement or verifying official accounts",
+    "Honor private-account visibility and blocked users in all read surfaces",
+    "Record actor, action, target, reason and timestamp for privileged mutations",
+    "Protect owner account from delegation and destructive self-actions",
+    "Keep maintenance rollback endpoints available to authorized admins"
+  ],
+  "parity_release_gate": [
+    "Both platforms pass authorization and staff-role tests",
+    "Both show the same six feature flags and enforce them at API boundaries",
+    "Both record an audit event on privileged mutations",
+    "Both safely triage three or more reports without automatic deletion",
+    "Both support suspension expiry and manual reversal",
+    "Both support emergency read-only mode and admin rollback",
+    "Browser and signed-in media tests pass on both implementations",
+    "Database migrations and restore procedures are documented",
+    "Real Google and Microsoft sign-in tested on both",
+    "Public launch only after production smoke tests and permission review",
+    "Floot scheduled jobs not advertised as live on the free plan",
+    "Both environments require independent backup, migration and secret configuration"
+  ],
+  "implementation_status": {
+    "github": "Protected admin routes, audit, moderation, roles, flags and Cloudflare cron; 32 local Node tests pass; branch not deployed and migration pending",
+    "floot": "Native React admin and PostgreSQL routes implemented; TypeScript and existing helper tests pass; unauthenticated API checks pass; signed-in production tests pending",
+    "shared_accounts": false,
+    "identical_source_files": false
+  }
+}

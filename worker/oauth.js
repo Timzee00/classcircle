@@ -1,3 +1,4 @@
+import {isSuspended,setting} from './admin.js';
 /** Minimal server-side OIDC authorization-code + PKCE integration. No OAuth client secrets in the browser. */
 const enc = new TextEncoder();
 const hex = b => [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -60,6 +61,7 @@ export async function handleOAuth(req,env,currentUser=null){
    }
    let userId=identity?.user_id;
    if(!userId){
+    if(await setting(env,'registration_enabled','true')==='false')return failure('registration_closed');
     // We explicitly do NOT merge based on email. A preexisting local account must be linked in a future authenticated flow.
     if(await db(env,'SELECT id FROM users WHERE email=?',email).first())return failure('existing_email_sign_in_with_original_method');
     userId=crypto.randomUUID();
@@ -68,6 +70,7 @@ export async function handleOAuth(req,env,currentUser=null){
      db(env,'INSERT INTO oauth_identities(provider,subject,user_id) VALUES(?,?,?)',provider,subject,userId)
     ]);
    }
+   if(await isSuspended(env,userId))return failure('account_suspended');
    const access=hex(crypto.getRandomValues(new Uint8Array(32))),sessionHash=await digest(access);
    await db(env,'INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)',sessionHash,userId,new Date(Date.now()+14*86400000).toISOString()).run();
    const headers=new Headers({Location:base+'/?signed_in=1','Cache-Control':'no-store'});

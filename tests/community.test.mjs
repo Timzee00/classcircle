@@ -10,6 +10,7 @@ function fixture(){
  const db=new DatabaseSync(':memory:');
  db.exec(readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8'));
  db.exec(readFileSync(new URL('../migrations/0002_social_oauth.sql',import.meta.url),'utf8'));
+ db.exec(readFileSync(new URL('../migrations/0003_admin.sql',import.meta.url),'utf8'));
  const bin=new Map();
  const wrap=statement=>({
   bind(...args){return wrapParams(statement,args)},
