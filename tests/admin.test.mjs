@@ -20,9 +20,13 @@ test('student denied admin endpoint, server-side allowlist recognizes only confi
  const r=await call(owner,'/api/admin/me');assert.equal(r.status,200);assert.equal((await r.json()).role,'superadmin');
 });
 test('owner grants moderator role but cannot hand out superadmin role',async()=>{
- const{user,call}=fixture();const owner=user('Owner','owner@classcircle.test'),mod=user('Moderated','moderated@test.edu');
+ const{db:fixtureReauthDb,user,call}=fixture();const owner=user('Owner','owner@classcircle.test'),mod=user('Moderated','moderated@test.edu');
  let r=await call(owner,'/api/admin/users/'+mod.id+'/role','POST',{role:'superadmin'});assert.equal(r.status,400);
- r=await call(owner,'/api/admin/users/'+mod.id+'/role','POST',{role:'moderator'});assert.equal(r.status,200);
+ r=await call(owner,'/api/admin/users/'+mod.id+'/role','POST',{role:'moderator',reason:'Approved academic moderator appointment'});assert.equal(r.status,200);
+ assert.equal((await call(mod,'/api/admin/me')).status,401);
+ const loginToken=randomBytes(32).toString('hex');
+ fixtureReauthDb.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').run(createHash('sha256').update(loginToken).digest('hex'),mod.id,new Date(Date.now()+86400000).toISOString());
+ mod.token=loginToken;
  r=await call(mod,'/api/admin/me');assert.equal((await r.json()).role,'moderator');
  assert.equal((await call(mod,'/api/admin/settings','POST',{key:'ai_enabled',value:false})).status,403);
 });
@@ -32,18 +36,43 @@ test('time-limited suspension blocks existing sessions and actions are audited',
  assert.equal((await call(student,'/api/bootstrap')).status,401);
  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM admin_audit WHERE action='user.suspended'").get().n,1);
  assert.equal((await call(owner,'/api/admin/users/'+owner.id+'/suspend','POST',{reason:'test self block',hours:24})).status,403);
- assert.equal((await call(owner,'/api/admin/users/'+student.id+'/restore','POST')).status,200);
+ assert.equal((await call(owner,'/api/admin/users/'+student.id+'/restore','POST',{reason:'After reviewing the moderation appeal'})).status,200);
 });
 test('feature flag blocks registration and existing AI requests, admin can reverse maintenance',async()=>{
  const{user,call}=fixture(),owner=user('Owner','owner@classcircle.test'),student=user('Student','s@test.edu');
- let r=await call(owner,'/api/admin/settings','POST',{key:'ai_enabled',value:false});assert.equal(r.status,200);
+ let r=await call(owner,'/api/admin/settings','POST',{key:'ai_enabled',value:false,reason:'Exceeded safe shared AI usage budget'});assert.equal(r.status,200);
  r=await call(student,'/api/ai/coach','POST',{question:'test'});assert.equal(r.status,503);
- r=await call(owner,'/api/admin/settings','POST',{key:'maintenance_mode',value:true});assert.equal(r.status,200);
+ r=await call(owner,'/api/admin/settings','POST',{key:'maintenance_mode',value:true,reason:'Emergency operational read-only testing'});assert.equal(r.status,200);
  assert.equal((await call(student,'/api/tasks','POST',{title:'test'})).status,503);
- assert.equal((await call(owner,'/api/admin/settings','POST',{key:'maintenance_mode',value:false})).status,200);
+ assert.equal((await call(owner,'/api/admin/settings','POST',{key:'maintenance_mode',value:false,reason:'Operational read-only test completed'})).status,200);
 });
 test('housekeeping does not delete post content and is idempotent',async()=>{
  const{db,env}=fixture();let r=await runHousekeeping(env);assert.ok(r.sessions>=0);
  r=await runHousekeeping(env);assert.equal(r.skipped,'already executed today');
  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM admin_job_runs WHERE name='daily-maintenance'").get().n,1);
+});
+
+test('platform-level setting and staff role changes require recorded reasons',async()=>{
+ const {user,call}=fixture(),owner=user('Owner','owner@classcircle.test'),other=user('Student','new-role@test.edu');
+ assert.equal((await call(owner,'/api/admin/settings','POST',{key:'ai_enabled',value:false})).status,400);
+ assert.equal((await call(owner,'/api/admin/users/'+other.id+'/role','POST',{role:'moderator'})).status,400);
+ assert.equal((await call(owner,'/api/admin/users/'+other.id+'/role','POST',{role:'moderator',reason:'Needed for moderated campus pilot'})).status,200);
+});
+test('admin cannot suspend another admin, and staff permissions enforce hierarchy',async()=>{
+ const {db:reauthDb,user,call}=fixture(),owner=user('Owner','owner@classcircle.test'),alice=user('Admin A','a@test.edu'),bob=user('Admin B','b@test.edu');
+ for(const u of [alice,bob]) assert.equal((await call(owner,'/api/admin/users/'+u.id+'/role','POST',{role:'admin',reason:'Pilot trusted admin designation'})).status,200);
+ for(const u of [alice,bob]){const token=randomBytes(32).toString('hex');reauthDb.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').run(createHash('sha256').update(token).digest('hex'),u.id,new Date(Date.now()+86400000).toISOString());u.token=token;}
+ assert.equal((await call(alice,'/api/admin/users/'+bob.id+'/suspend','POST',{hours:24,reason:'Cannot suspend equal trust staff'})).status,403);
+ assert.equal((await call(alice,'/api/admin/users/'+bob.id+'/role','POST',{role:'student',reason:'Attempted demotion without privilege'})).status,403);
+});
+test('authorized human review resolves a report and records reason',async()=>{
+ const {db,user,call}=fixture(),owner=user('Owner','owner@classcircle.test'),student=user('Poster','poster@test.edu'),reporter=user('Reporter','reporter@test.edu');
+ const post=randomUUID(),report=randomUUID();
+ db.prepare('INSERT INTO social_posts(id,user_id,body,created_at) VALUES(?,?,?,?)').run(post,student.id,'Example class announcement',new Date().toISOString());
+ db.prepare('INSERT INTO social_reports(id,reporter_id,post_id,reason,status) VALUES(?,?,?,?,?)').run(report,reporter.id,post,'Suspected copied material','pending');
+ assert.equal((await call(reporter,'/api/admin/reports/'+report+'/review','POST',{reason:'Reviewed the report thoroughly'})).status,403);
+ assert.equal((await call(owner,'/api/admin/reports/'+report+'/review','POST',{reason:'Verified context: no policy violation'})).status,200);
+ assert.equal(db.prepare('SELECT status FROM social_reports WHERE id=?').get(report).status,'reviewed');
+ assert.equal(db.prepare("SELECT COUNT(*) AS n FROM admin_audit WHERE action='report.reviewed'").get().n,1);
+ assert.equal((await call(owner,'/api/admin/reports/'+report+'/review','POST',{reason:'Second review attempt rejected'})).status,409);
 });
