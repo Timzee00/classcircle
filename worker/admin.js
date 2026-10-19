@@ -53,12 +53,16 @@ export async function handleAdmin(req,e,user){
   const target=await one(e,'SELECT id,email FROM users WHERE id=?',targetId);
   if(!target)return fail('Account not found',404);
   if(target.id===user.id || fromAllowlist(target.email,e))return fail('Cannot modify your own account or a protected owner',403);
+  const targetRole=await roleOf(e,target);
+  if(roles.indexOf(targetRole)>=roles.indexOf(role))return fail('Only a higher-trust administrator may change this account',403);
   if(action==='role'){
    if(!has(role,'roles'))return fail('Only a super admin can assign roles',403);
-   const body=await parse(req),next=body.role;
+   const body=await parse(req),next=body.role,reason=String(body.reason||'').trim();
+   if(reason.length<8||reason.length>400)return fail('Explain the staff permission change (8–400 characters)',400);
    if(!roles.includes(next)||next==='superadmin')return fail('Only owner allowlist can grant superadmin',400);
    await run(e,'INSERT INTO admin_roles(user_id,role,granted_by,created_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,granted_by=excluded.granted_by,created_at=excluded.created_at',targetId,next,user.id,now());
-   await audit(e,user.id,'user.role',targetId,{role:next});return json({ok:true,role:next});
+   await run(e,'DELETE FROM sessions WHERE user_id=?',targetId);
+   await audit(e,user.id,'user.role',targetId,{role:next,reason});return json({ok:true,role:next});
   }
   if(!has(role,'suspend'))return fail('Admin role required',403);
   if(action==='suspend'){
@@ -70,8 +74,22 @@ export async function handleAdmin(req,e,user){
     await run(e,'DELETE FROM sessions WHERE user_id=?',targetId);
     await audit(e,user.id,'user.suspended',targetId,{hours,reason});return json({ok:true,until});
   }
+  const body=await parse(req),reason=String(body.reason||'').trim();
+  if(reason.length<8||reason.length>400)return fail('Explain why the account is restored (8–400 characters)',400);
   await run(e,'DELETE FROM admin_restrictions WHERE user_id=?',targetId);
-  await audit(e,user.id,'user.restored',targetId);return json({ok:true});
+  await audit(e,user.id,'user.restored',targetId,{reason});return json({ok:true});
+ }
+ const reviews=path.match(/^\/api\/admin\/reports\/([a-f0-9-]{36})\/review$/);
+ if(method==='POST'&&reviews){
+  if(!has(role,'reports'))return fail('Only moderators can review reports',403);
+  const body=await parse(req),reason=String(body.reason||'').trim();
+  if(reason.length<8||reason.length>400)return fail('Record a review reason (8–400 characters)',400);
+  const record=await one(e,'SELECT id,post_id,status FROM social_reports WHERE id=?',reviews[1]);
+  if(!record)return fail('Report not found',404);
+  if(record.status!=='pending')return fail('This report has already been reviewed',409);
+  await run(e,'UPDATE social_reports SET status=? WHERE id=?','reviewed',reviews[1]);
+  await audit(e,user.id,'report.reviewed',reviews[1],{reason,post_id:record.post_id});
+  return json({ok:true});
  }
  const posts=path.match(/^\/api\/admin\/posts\/([a-f0-9-]{36})\/(hide|restore)$/);
  if(method==='POST'&&posts){
@@ -81,20 +99,23 @@ export async function handleAdmin(req,e,user){
     const body=await parse(req),reason=String(body.reason||'').trim();if(reason.length<6||reason.length>350)return fail('Explain why the post must be hidden',400);
     await run(e,'INSERT INTO admin_hidden_posts(post_id,reason,hidden_by,hidden_at) VALUES(?,?,?,?) ON CONFLICT(post_id) DO UPDATE SET reason=excluded.reason,hidden_by=excluded.hidden_by,hidden_at=excluded.hidden_at',posts[1],reason,user.id,now());
     await audit(e,user.id,'post.hidden',posts[1],{reason});
-  }else{await run(e,'DELETE FROM admin_hidden_posts WHERE post_id=?',posts[1]);await audit(e,user.id,'post.restored',posts[1])}
+  }else{const body=await parse(req),reason=String(body.reason||'').trim();if(reason.length<8||reason.length>400)return fail('Explain why this post is restored',400);await run(e,'DELETE FROM admin_hidden_posts WHERE post_id=?',posts[1]);await audit(e,user.id,'post.restored',posts[1],{reason})}
   return json({ok:true});
  }
  if(method==='POST'&&path==='/api/admin/settings'){
   if(!has(role,'settings'))return fail('Admin role required',403);
-  const body=await parse(req),key=body.key,value=body.value;
+  const body=await parse(req),key=body.key,value=body.value,reason=String(body.reason||'').trim();
+  if(reason.length<8||reason.length>400)return fail('Explain the platform-wide change (8–400 characters)',400);
   const allowed=['maintenance_mode','registration_enabled','ai_enabled','social_posting_enabled','automation_cleanup','automation_triage'];
   if(!allowed.includes(key)||typeof value!=='boolean')return fail('Unknown setting or value',400);
   await run(e,'INSERT INTO admin_settings(key,value,updated_at,updated_by) VALUES(?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at,updated_by=excluded.updated_by',key,String(value),now(),user.id);
-  await audit(e,user.id,'setting.changed',key,{value});return json({ok:true,key,value});
+  await audit(e,user.id,'setting.changed',key,{value,reason});return json({ok:true,key,value});
  }
  if(method==='POST'&&path==='/api/admin/jobs/run'){
   if(!has(role,'jobs'))return fail('Admin role required',403);
-  const result=await runHousekeeping(e,{actor:user.id,manual:true});await audit(e,user.id,'automation.run','housekeeping',result);return json({ok:true,result});
+  const body=await parse(req),reason=String(body.reason||'').trim();
+  if(reason.length<8||reason.length>400)return fail('Describe the reason for this manual run',400);
+  const result=await runHousekeeping(e,{actor:user.id,manual:true});await audit(e,user.id,'automation.run','housekeeping',{...result,reason});return json({ok:true,result});
  }
  return fail('Unknown admin route',404);
 }
