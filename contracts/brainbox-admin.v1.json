@@ -2,26 +2,66 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "product": "ClassCircle",
   "system": "BrainBox Control Plane",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "scope": "platform-administration",
   "student_tutor_is_separate": true,
   "implementation_targets": {
     "github": "Cloudflare Workers + D1 or Neon + HTML/JS dashboard",
     "floot": "Floot React + Floot PostgreSQL + Floot authentication + scheduled jobs"
   },
-  "principal_roles": ["student", "support", "moderator", "admin", "superadmin"],
+  "principal_roles": [
+    "student",
+    "support",
+    "moderator",
+    "admin",
+    "superadmin"
+  ],
   "permissions": {
     "student": [],
-    "support": ["dashboard", "users_read", "audit_read"],
-    "moderator": ["dashboard", "users_read", "reports", "posts", "audit_read"],
-    "admin": ["dashboard", "users_read", "reports", "posts", "audit_read", "suspend", "settings", "jobs"],
-    "superadmin": ["dashboard", "users_read", "reports", "posts", "audit_read", "suspend", "settings", "jobs", "roles"]
+    "support": [
+      "dashboard",
+      "users_read",
+      "audit_read"
+    ],
+    "moderator": [
+      "dashboard",
+      "users_read",
+      "reports",
+      "posts",
+      "audit_read"
+    ],
+    "admin": [
+      "dashboard",
+      "users_read",
+      "reports",
+      "posts",
+      "audit_read",
+      "suspend",
+      "settings",
+      "jobs"
+    ],
+    "superadmin": [
+      "dashboard",
+      "users_read",
+      "reports",
+      "posts",
+      "audit_read",
+      "suspend",
+      "settings",
+      "jobs",
+      "roles"
+    ]
   },
   "owner_bootstrap": {
     "github": "SUPERADMIN_EMAILS allowlist, checked server-side from authenticated email",
-    "floot": "Floot owner-controlled admin role; require explicit owner verification before granting superadmin",
+    "floot": "CLASSCIRCLE_SUPERADMIN_EMAILS server-side allowlist; existing Floot admin role has admin-level access; secure owner configuration required before staff assignments",
     "self_promotion": false,
-    "staff_assignable_roles": ["student", "support", "moderator", "admin"]
+    "staff_assignable_roles": [
+      "student",
+      "support",
+      "moderator",
+      "admin"
+    ]
   },
   "flags": {
     "maintenance_mode": false,
@@ -61,6 +101,12 @@
       "engagement": "Gentle learning follow-ups driven by user-set goals, no manipulative streak-pressure",
       "analytics": "Opt-in aggregated progress metrics, 7/30-day retention cohorts, funnel and incident logs",
       "workflows": "Task queue with retry, dead-letter handling, approval before high-impact actions"
+    },
+    "implemented_in_floot": {
+      "temporary_restrictions": "Enforced immediately on session authorization and expire automatically at configured time",
+      "report_triage": "On third distinct report, add the post to a moderator queue for human review",
+      "manual_cleanup": "Authorized staff can run session, AI record and expired suspension cleanup",
+      "scheduled_cleanup": "Only runs in published Floot paid plans when a supported scheduled job is configured; not running on free"
     }
   },
   "security_non_negotiables": [
@@ -83,6 +129,14 @@
     "Browser and signed-in media tests pass on both implementations",
     "Database migrations and restore procedures are documented",
     "Real Google and Microsoft sign-in tested on both",
-    "Public launch only after production smoke tests and permission review"
-  ]
+    "Public launch only after production smoke tests and permission review",
+    "Floot scheduled jobs not advertised as live on the free plan",
+    "Both environments require independent backup, migration and secret configuration"
+  ],
+  "implementation_status": {
+    "github": "Protected admin routes, audit, moderation, roles, flags and Cloudflare cron; 32 local Node tests pass; branch not deployed and migration pending",
+    "floot": "Native React admin and PostgreSQL routes implemented; TypeScript and existing helper tests pass; unauthenticated API checks pass; signed-in production tests pending",
+    "shared_accounts": false,
+    "identical_source_files": false
+  }
 }
